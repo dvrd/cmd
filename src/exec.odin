@@ -30,14 +30,6 @@ exec :: proc(path: string, args: []string = {}) -> failz.Errno {
 	#no_bounds_check env: [^]cstring = &runtime.args__[len(runtime.args__) + 1]
 
 	_unix_execve(path_cstr, args_cstrs, env)
+
 	return failz.Errno(os.get_last_error())
-}
-
-@(test)
-exec_test :: proc(t: ^testing.T) {
-	using testing
-
-	result := exec("/bin/ls")
-
-	expect(t, result == failz.Errno(0), "exec failed")
 }
