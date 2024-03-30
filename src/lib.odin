@@ -1,8 +1,10 @@
 package cmd
 
 import "core:c"
+import "core:os"
 import "core:c/libc"
 import "core:fmt"
+import "libs:failz"
 
 Pid :: distinct i32
 pid_t :: i32
@@ -58,6 +60,8 @@ init :: proc(cmd: ^CmdRunner, args: []string) -> (ok: bool) {
 		failz.warn(cmd.err, "fork:")
 		return false
 	}
+
+	return true
 }
 
 run :: proc(cmd: ^CmdRunner) -> bool {
@@ -69,15 +73,15 @@ run :: proc(cmd: ^CmdRunner) -> bool {
 		}
 		os.exit(0)
 	}
+	return true
 }
 
 wait :: proc(cmd: ^CmdRunner) -> bool {
 	status: u32
 	wpid, err := waitpid(cmd.pid, &status, {.WUNTRACED})
 	failz.warn(err, "waitpid:")
-	return wpid == pid && WIFEXITED(status)
+	return wpid == cmd.pid && WIFEXITED(status)
 }
 
-close :: proc(cmd: ^CmdRunner) {
-}
+close :: proc(cmd: ^CmdRunner) {}
 
