@@ -1,0 +1,14 @@
+{
+    "name": "cmd",
+    "url": "https://github.com/dvrd/cmd",
+    "readme": "",
+    "description": "command launcher library",
+    "version": "0.1.0",
+    "license": "",
+    "keywords": [
+
+    ],
+    "dependencies": {
+        "github.com/dvrd/failz": "0.1.0"
+    }
+}
