@@ -1,0 +1,23 @@
+:author: Dan Castrillo
+:version: 0.1.0
+
+= Cmd
+
+Tiny personal library to launch commands
+
+[source:odin]
+----
+import "libs:cmd"
+
+main :: proc() {
+  // You can just call the launcher
+  ok := cmd.launch({"ls"})
+
+  // Or you can use the runner to have more fine grained control
+  r: CmdRunner 
+  cmd.init(&r, {"ls"})  // finds and the command and forks the process
+  cmd.run(&r)           // runs execve with the entire environment copied to it
+  cmd.wait(&r)          // waits for the process to finish
+  cmd.close(&r)         // cleans up memory
+}
+----

@@ -37,3 +37,47 @@ Wait_Option :: enum {
 }
 
 Wait_Options :: bit_set[Wait_Option;u32]
+
+CmdRunner :: struct {
+	args: []string,
+	path: string,
+	pid:  Pid,
+	err:	failz.Errno,
+}
+
+init :: proc(cmd: ^CmdRunner, args: []string) -> (ok: bool) {
+	cmd.args = args
+	cmd.path, ok = find_program(args[0])
+	if !ok {
+		failz.warn(msg = fmt.tprint(args[0], "command not found:"))
+		return false
+	}
+
+	cmd.pid, cmd.err = fork()
+	if cmd.err != .ERROR_NONE {
+		failz.warn(cmd.err, "fork:")
+		return false
+	}
+}
+
+run :: proc(cmd: ^CmdRunner) -> bool {
+	if (cmd.pid == 0) {
+		err := exec(cmd.path, cmd.args[1:])
+		if err != .ERROR_NONE {
+			failz.warn(err, "execve:")
+			return false
+		}
+		os.exit(0)
+	}
+}
+
+wait :: proc(cmd: ^CmdRunner) -> bool {
+	status: u32
+	wpid, err := waitpid(cmd.pid, &status, {.WUNTRACED})
+	failz.warn(err, "waitpid:")
+	return wpid == pid && WIFEXITED(status)
+}
+
+close :: proc(cmd: ^CmdRunner) {
+}
+
