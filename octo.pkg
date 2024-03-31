@@ -1,6 +1,7 @@
 {
     "name": "cmd",
     "url": "https://github.com/dvrd/cmd",
+    "root": "src",
     "readme": "",
     "description": "command launcher library for Odin lang",
     "version": "0.1.0",
@@ -8,6 +9,7 @@
     "keywords": [],
     "dependencies": {
         "github.com/dvrd/failz": "0.1.0"
+        "github.com/dvrd/ansi": "0.1.0"
     }
 }
 
