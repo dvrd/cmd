@@ -14,7 +14,7 @@ main :: proc() {
   ok := cmd.launch({"ls"})
 
   // Or you can use the runner to have more fine grained control
-  r: CmdRunner 
+  r: CmdRunner
   cmd.init(&r, {"ls"})  // finds and the command and forks the process
   cmd.run(&r)           // runs execve with the entire environment copied to it
   cmd.wait(&r)          // waits for the process to finish

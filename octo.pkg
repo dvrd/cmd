@@ -1,11 +1,11 @@
 {
+    "version": "0.0.2",
     "name": "cmd",
     "url": "https://github.com/dvrd/cmd",
     "root": "src",
     "readme": "",
     "description": "command launcher library for Odin lang",
-    "version": "0.0.2",
-    "license": "",
+    "license": "MIT",
     "keywords": [],
     "dependencies": {
         "github.com/dvrd/failz": "0.1.0"
