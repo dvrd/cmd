@@ -1,10 +1,10 @@
 package cmd
 
 import "base:runtime"
+import "core:fmt"
 import "core:os"
 import "core:strings"
 import "core:testing"
-import "libs:failz"
 
 when ODIN_OS == .Darwin {
 	foreign import lib "system:System.framework"
@@ -14,10 +14,10 @@ when ODIN_OS == .Darwin {
 
 foreign lib {
 	@(link_name = "execve")
-	_unix_execve :: proc(path: cstring, argv: [^]cstring, envp: [^]cstring) -> int ---
+	_unix_execve :: proc(path: cstring, argv: [^]cstring, envp: [^]cstring) -> Errno ---
 }
 
-exec :: proc(path: string, args: []string = {}) -> failz.Errno {
+exec :: proc(path: string, args: []string = {}) -> Errno {
 	runtime.DEFAULT_TEMP_ALLOCATOR_TEMP_GUARD()
 	path_cstr := strings.clone_to_cstring(path, context.temp_allocator)
 
@@ -29,7 +29,5 @@ exec :: proc(path: string, args: []string = {}) -> failz.Errno {
 
 	#no_bounds_check env: [^]cstring = &runtime.args__[len(runtime.args__) + 1]
 
-	_unix_execve(path_cstr, args_cstrs, env)
-
-	return failz.Errno(os.get_last_error())
+	return _unix_execve(path_cstr, args_cstrs, env)
 }

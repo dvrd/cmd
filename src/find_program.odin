@@ -3,43 +3,27 @@ package cmd
 import "core:fmt"
 import "core:os"
 import "core:strings"
-import "libs:failz"
 
-find_program :: proc(target: string) -> (string, bool) #optional_ok {
-	sb := strings.builder_make()
+find_program :: proc(target: string) -> (string, bool) {
 	env_path := os.get_env("PATH")
 	dirs := strings.split(env_path, ":")
 
-	if len(dirs) == 0 {
-		failz.warn(msg = "missing $path environment variable")
-		return "", false
-	}
+	if len(dirs) == 0 do return "", false
 
 	for dir in dirs {
-		if os.is_dir(dir) {
-			failz.warn(msg = "corrupt $path environment variable")
-			failz.warn(msg = fmt.tprintf("found (%s)", dir))
-			return "", false
-		}
+		if !os.is_dir(dir) do continue
 
 		fd, err := os.open(dir)
 		defer os.close(fd)
-
-		if err != os.ERROR_NONE {
-			continue
-		}
+		if Errno(err) != .ERROR_NONE do continue
 
 		fis: []os.File_Info
 		defer os.file_info_slice_delete(fis)
-
 		fis, err = os.read_dir(fd, -1)
-		failz.warn(failz.Errno(err), fmt.tprintf("found issue reading directory (%s): ", dir))
+		if Errno(err) != .ERROR_NONE do continue
 
 		for fi in fis {
-			if fi.name == target {
-				strings.write_string(&sb, fi.fullpath)
-				return strings.to_string(sb), true
-			}
+			if fi.name == target do return fi.fullpath, true
 		}
 	}
 

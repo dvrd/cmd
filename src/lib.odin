@@ -1,10 +1,9 @@
 package cmd
 
 import "core:c"
-import "core:os"
 import "core:c/libc"
 import "core:fmt"
-import "libs:failz"
+import "core:os"
 
 Pid :: distinct i32
 pid_t :: i32
@@ -25,10 +24,10 @@ WIFEXITED :: #force_inline proc "contextless" (s: u32) -> bool {
 	return WTERMSIG(s) == 0
 }
 
-Wait_Option :: enum {
+WaitOption :: enum {
 	WNOHANG     = 0,
 	WUNTRACED   = 1,
-	WSTOPPED    = 1,
+	WSTOPPED    = WUNTRACED,
 	WEXITED     = 2,
 	WCONTINUED  = 3,
 	WNOWAIT     = 24,
@@ -38,40 +37,35 @@ Wait_Option :: enum {
 	__WCLONE    = 31,
 }
 
-Wait_Options :: bit_set[Wait_Option;u32]
+WaitOptions :: bit_set[WaitOption;u32]
 
 CmdRunner :: struct {
 	args: []string,
 	path: string,
 	pid:  Pid,
-	err:	failz.Errno,
+	err:  Errno,
+}
+
+launch :: proc(cmd: ^CmdRunner, args: []string) -> bool {
+	return init(cmd, args) && run(cmd) && wait(cmd)
 }
 
 init :: proc(cmd: ^CmdRunner, args: []string) -> (ok: bool) {
 	cmd.args = args
 	cmd.path, ok = find_program(args[0])
 	if !ok {
-		failz.warn(msg = fmt.tprint(args[0], "command not found:"))
+		cmd.err = .ENOENT
 		return false
 	}
 
 	cmd.pid, cmd.err = fork()
-	if cmd.err != .ERROR_NONE {
-		failz.warn(cmd.err, "fork:")
-		return false
-	}
-
-	return true
+	return cmd.err == .ERROR_NONE
 }
 
 run :: proc(cmd: ^CmdRunner) -> bool {
 	if (cmd.pid == 0) {
 		err := exec(cmd.path, cmd.args[1:])
-		if err != .ERROR_NONE {
-			failz.warn(err, "execve:")
-			return false
-		}
-		os.exit(0)
+		return err == .ERROR_NONE
 	}
 	return true
 }
@@ -79,9 +73,6 @@ run :: proc(cmd: ^CmdRunner) -> bool {
 wait :: proc(cmd: ^CmdRunner) -> bool {
 	status: u32
 	wpid, err := waitpid(cmd.pid, &status, {.WUNTRACED})
-	failz.warn(err, "waitpid:")
+	cmd.err = err
 	return wpid == cmd.pid && WIFEXITED(status)
 }
-
-close :: proc(cmd: ^CmdRunner) {}
-

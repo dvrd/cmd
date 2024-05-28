@@ -1,37 +1,4 @@
-package failz
-
-import "core:fmt"
-import "core:mem"
-import "core:os"
-import "core:strings"
-import "libs:ansi"
-
-INFO := ansi.colorize("  ", {65, 105, 225})
-ERROR := ansi.colorize("  ", {220, 20, 60})
-WARNING := ansi.colorize("  ", {147, 112, 219})
-MESSAGE := ansi.colorize(" 󱥂 ", {30, 144, 255})
-
-purple :: proc(str: string) -> string {
-	return ansi.colorize(str, {147, 112, 219})
-}
-
-AllocError :: mem.Allocator_Error
-
-ErrorKind :: enum {
-	File,
-}
-
-SystemError :: struct {
-	kind: ErrorKind,
-	msg:  string,
-}
-
-Error :: union {
-	AllocError,
-	SystemError,
-	Errno,
-	bool,
-}
+package cmd
 
 Errno :: enum {
 	ERROR_NONE      = 0,
@@ -163,44 +130,3 @@ Errno :: enum {
 	ELAST           = 106, /* Must be equal largest errno */
 }
 
-catch :: proc(err: Error, msg: string = "", should_exit := true, location := #caller_location) {
-	sb := strings.builder_make()
-	fmt.sbprintf(&sb, "%s ", ERROR)
-	fmt.sbprintf(&sb, "%s: %s\n", purple(location.procedure), msg)
-
-	#partial switch e in err {
-	case AllocError:
-		fmt.sbprint(&sb, MESSAGE, e)
-		fmt.sbprintf(&sb, "in %s at %d:%d", location.file_path, location.line, location.column)
-		fmt.eprintln(strings.to_string(sb))
-	case SystemError:
-		fmt.sbprint(&sb, MESSAGE, e.msg)
-		fmt.sbprintf(&sb, "in %s at %d:%d", location.file_path, location.line, location.column)
-		fmt.eprintln(strings.to_string(sb))
-	case Errno:
-		if e == .ERROR_NONE {return}
-		fmt.sbprint(&sb, MESSAGE, os.get_last_error_string())
-		fmt.sbprintf(&sb, "in %s at %d:%d", location.file_path, location.line, location.column)
-		fmt.eprintln(strings.to_string(sb))
-	case bool:
-		if !e {return}
-		fmt.sbprint(&sb, MESSAGE)
-		fmt.sbprintf(&sb, "in %s at %d:%d", location.file_path, location.line, location.column)
-		fmt.eprintln(strings.to_string(sb))
-	}
-
-	if err != nil && should_exit {os.exit(1)}
-}
-
-warn :: proc(err: Error = true, msg := "") {
-	#partial switch e in err {
-	case AllocError:
-		fmt.eprintln(WARNING, msg, e)
-	case SystemError:
-		fmt.eprintln(WARNING, msg, e.msg)
-	case Errno:
-		if e != .ERROR_NONE {fmt.eprintln(WARNING, msg, os.get_last_error_string())}
-	case bool:
-		if e {fmt.eprintln(WARNING, msg)}
-	}
-}
