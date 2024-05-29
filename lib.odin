@@ -5,6 +5,7 @@ import "core:c"
 import "core:c/libc"
 import "core:fmt"
 import "core:os"
+import "core:path/filepath"
 import "core:strings"
 import "core:testing"
 
@@ -15,16 +16,18 @@ when ODIN_OS == .Darwin {
 }
 
 foreign lib {
-	@(link_name = "execve")
-	_unix_execve :: proc(path: cstring, argv: [^]cstring, envp: [^]cstring) -> Errno ---
+	@(link_name = "execvp")
+	_unix_execvp :: proc(path: cstring, argv: [^]cstring) -> c.int ---
 	@(link_name = "fork")
 	_unix_fork :: proc() -> pid_t ---
 	@(link_name = "popen")
 	_unix_popen :: proc(command: cstring, mode: cstring) -> ^libc.FILE ---
 	@(link_name = "pclose")
-	_unix_pclose :: proc(stream: ^libc.FILE) -> int ---
+	_unix_pclose :: proc(stream: ^libc.FILE) -> c.int ---
+	@(link_name = "wait")
+	_unix_wait :: proc(stat_loc: ^c.int) -> pid_t ---
 	@(link_name = "waitpid")
-	_unix_waitpid :: proc(pid: pid_t, stat_loc: ^c.uint, options: c.uint) -> pid_t ---
+	_unix_waitpid :: proc(pid: pid_t, stat_loc: ^c.int, options: c.int) -> pid_t ---
 }
 
 Errno :: enum {
@@ -157,22 +160,22 @@ Errno :: enum {
 	ELAST           = 106, /* Must be equal largest errno */
 }
 
-Pid :: distinct i32
-pid_t :: i32
+Pid :: distinct c.int
+pid_t :: c.int
 
 /// Termination signal
 /// Only retrieve the code if WIFSIGNALED(s) = true
-WTERMSIG :: #force_inline proc "contextless" (s: u32) -> u32 {
+WTERMSIG :: #force_inline proc "contextless" (s: c.int) -> c.int {
 	return s & 0x7f
 }
 
 /// Check if the process signaled
-WIFSIGNALED :: #force_inline proc "contextless" (s: u32) -> bool {
+WIFSIGNALED :: #force_inline proc "contextless" (s: c.int) -> bool {
 	return cast(i8)(((s) & 0x7f) + 1) >> 1 > 0
 }
 
 /// Check if the process terminated normally (via exit.2)
-WIFEXITED :: #force_inline proc "contextless" (s: u32) -> bool {
+WIFEXITED :: #force_inline proc "contextless" (s: c.int) -> bool {
 	return WTERMSIG(s) == 0
 }
 
@@ -189,7 +192,7 @@ WaitOption :: enum {
 	__WCLONE    = 31,
 }
 
-WaitOptions :: bit_set[WaitOption;u32]
+WaitOptions :: bit_set[WaitOption;i32]
 
 CmdRunner :: struct {
 	args: []string,
@@ -198,50 +201,57 @@ CmdRunner :: struct {
 	err:  Errno,
 }
 
-launch :: proc(cmd: ^CmdRunner, args: []string) -> bool {
-	return init(cmd, args) && run(cmd) && wait(cmd)
+fork :: proc() -> (Pid, Errno) {
+	pid := _unix_fork()
+	if pid == -1 {
+		return -1, Errno(os.get_last_error())
+	}
+	return Pid(pid), .ERROR_NONE
+}
+
+launch :: proc(args: []string) -> Errno {
+	r: CmdRunner
+	if !init(&r, args) do return r.err
+	if !run(&r) do return r.err
+	if !wait(&r) do return r.err
+
+	return .ERROR_NONE
 }
 
 init :: proc(cmd: ^CmdRunner, args: []string) -> (ok: bool) {
 	cmd.args = args
-	cmd.path, ok = find_program(args[0])
-	if !ok {
-		cmd.err = .ENOENT
-		return false
-	}
-
 	cmd.pid, cmd.err = fork()
 	return cmd.err == .ERROR_NONE
 }
 
 run :: proc(cmd: ^CmdRunner) -> bool {
 	if (cmd.pid == 0) {
-		err := exec(cmd.path, cmd.args[1:])
+		err := exec(cmd.args)
 		return err == .ERROR_NONE
 	}
 	return true
 }
 
 wait :: proc(cmd: ^CmdRunner) -> bool {
-	status: u32
+	status: c.int
 	wpid, err := waitpid(cmd.pid, &status, {.WUNTRACED})
 	cmd.err = err
 	return wpid == cmd.pid && WIFEXITED(status)
 }
 
-exec :: proc(path: string, args: []string = {}) -> Errno {
+exec :: proc(args: []string = {}) -> Errno {
 	runtime.DEFAULT_TEMP_ALLOCATOR_TEMP_GUARD()
-	path_cstr := strings.clone_to_cstring(path, context.temp_allocator)
-
-	args_cstrs := make([^]cstring, len(args) + 2, context.temp_allocator)
-	args_cstrs[0] = strings.clone_to_cstring(path, context.temp_allocator)
-	for i := 0; i < len(args); i += 1 {
-		args_cstrs[i + 1] = strings.clone_to_cstring(args[i], context.temp_allocator)
+	path_cstr := strings.clone_to_cstring(args[0])
+	args_cstrs := make([]cstring, len(args) + 1, context.temp_allocator)
+	for i in 0 ..< len(args) {
+		args_cstrs[i] = strings.clone_to_cstring(args[i], context.temp_allocator)
 	}
 
-	#no_bounds_check env: [^]cstring = &runtime.args__[len(runtime.args__) + 1]
+	if _unix_execvp(path_cstr, raw_data(args_cstrs)) < 0 {
+		return cast(Errno)os.get_last_error()
+	}
 
-	return _unix_execve(path_cstr, args_cstrs, env)
+	return .ERROR_NONE
 }
 
 find_program :: proc(target: string) -> (string, bool) {
@@ -263,19 +273,11 @@ find_program :: proc(target: string) -> (string, bool) {
 		if Errno(err) != .ERROR_NONE do continue
 
 		for fi in fis {
-			if fi.name == target do return fi.fullpath, true
+			if fi.name == target do return strings.clone(fi.fullpath), true
 		}
 	}
 
 	return "", false
-}
-
-fork :: proc() -> (Pid, Errno) {
-	pid := _unix_fork()
-	if pid == -1 {
-		return Pid(-1), Errno(os.get_last_error())
-	}
-	return Pid(pid), .ERROR_NONE
 }
 
 popen :: proc(cmd: string, get_response := true, read_size := 4096) -> (out: string, ok: bool) {
@@ -296,8 +298,8 @@ popen :: proc(cmd: string, get_response := true, read_size := 4096) -> (out: str
 	return
 }
 
-waitpid :: proc "contextless" (pid: Pid, status: ^u32, options: WaitOptions) -> (Pid, Errno) {
-	ret := _unix_waitpid(cast(i32)pid, status, transmute(u32)options)
+waitpid :: proc "contextless" (pid: Pid, status: ^c.int, options: WaitOptions) -> (Pid, Errno) {
+	ret := _unix_waitpid(cast(i32)pid, cast(^c.int)status, transmute(c.int)options)
 	return Pid(ret), Errno(os.get_last_error())
 }
 
@@ -309,7 +311,7 @@ test_launch :: proc(t: ^testing.T) {
 	arguments := []string{"echo", "testing"}
 	expect(
 		t,
-		launch(&rnr, arguments),
+		launch(arguments) == .ERROR_NONE,
 		fmt.tprint("should be successful, but found error:", rnr.err),
 	)
 }
