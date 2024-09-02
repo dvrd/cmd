@@ -1,6 +1,5 @@
 package cmd
 
-import "base:runtime"
 import "core:fmt"
 import "core:log"
 import "core:mem"
@@ -12,31 +11,43 @@ launch :: proc(args: []string) -> bool {
 	cmd, found := slice.get(args, 0)
 	assert(found, "launch requires at least 1 argument to execute as program")
 
+	cmd, found = find_program(cmd)
+	if !found {
+		log.error("Could not find progra:", args[0])
+		return false
+	}
+	args[0] = cmd
+
 	READ :: 0
 	WRITE :: 1
 	err: os.Error
 
 	stdin_pipe: [2]^os.File
 	stdin_pipe[READ], stdin_pipe[WRITE], err = os.pipe()
-	assert(err == nil, "Failed to create new stdin pipe")
+	assert(err == nil, fmt.tprint("Failed to create new stdin pipe:", err))
 
 	stdout_pipe: [2]^os.File
 	stdout_pipe[READ], stdout_pipe[WRITE], err = os.pipe()
-	assert(err == nil, "Failed to create new stdout pipe")
+	assert(err == nil, fmt.tprint("Failed to create new stdout pipe:", err))
 
 	stderr_pipe: [2]^os.File
 	stderr_pipe[READ], stderr_pipe[WRITE], err = os.pipe()
-	assert(err == nil, "Failed to create new stderr pipe")
+	assert(err == nil, fmt.tprint("Failed to create new stderr pipe:", err))
+
+	cwd: string
+	cwd, err = os.getwd(context.temp_allocator)
+	assert(err == nil, fmt.tprint("Failed to get cwd:", err))
 
 	desc: os.Process_Desc = {
-		env     = os.environ(context.temp_allocator),
-		command = args,
-		stdin   = stdin_pipe[WRITE],
-		stdout  = stdout_pipe[WRITE],
-		stderr  = stderr_pipe[WRITE],
+		env         = os.environ(context.temp_allocator),
+		working_dir = cwd,
+		command     = args,
+		stdin       = stdin_pipe[WRITE],
+		stdout      = stdout_pipe[WRITE],
+		stderr      = stderr_pipe[WRITE],
 	}
 
-	log.debugf("Executing `{}`", cmd)
+	log.debugf("Executing `{}`", desc.command)
 	p: os.Process
 	p, err = os.process_start(desc)
 	if err != nil {
@@ -97,6 +108,8 @@ launch :: proc(args: []string) -> bool {
 }
 
 find_program :: proc(target: string) -> (string, bool) {
+	log.debug("Searching for:", target)
+
 	env_path, found := os.lookup_env("PATH", context.allocator)
 	assert(found, "Missing PATH environment variable")
 
